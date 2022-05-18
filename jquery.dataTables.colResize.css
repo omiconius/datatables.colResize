@@ -1,0 +1,7 @@
+.dt-col-resize{
+    border-right: 1px solid #2196f3 !important;
+}
+.dt-col-resize +td, 
+.dt-col-resize +th{
+    border-left: 1px solid #2196f3 !important;
+}
