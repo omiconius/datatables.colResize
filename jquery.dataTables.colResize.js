@@ -37,7 +37,7 @@
         }
         this.dt = new DataTable.Api(dt);
         var dtSettings = this.dt.settings()[0];
-        this.c = $.extend(true, {}, ColResize.defaults, config === true ? {} : config)
+        this.c = $.extend(true, {}, ColResize.defaults, config === true ? {} : config);
         
         this.s = {
             dt: dtSettings,
@@ -49,13 +49,17 @@
                 neighbourIndex: -1,
                 neighbourColumn: -1
             },
-            namespace: '.dtcrs' + (_instCounter++)
+            namespace: '.dtcrs' + (_instCounter++),
+            count : {
+                saveState : 0
+            }
         };
         
         this.dom = {
             resizeCol: null,
             resizeColNeighbour: null,
-            restoreEvents: []
+            restoreEvents: [],
+            restoreTouchEvents: [],
         };
 
         if (dtSettings._colResize) {
@@ -115,6 +119,10 @@
         },
         
         _fnStateSave: function (oState) {
+            this.s.count.saveState++;
+            if(this.s.count.saveState == 1){
+                return;
+            }
             var col = this.s.dt.aoColumns, el;
             var len = col.length;
             for(var i = 0; i < len; i++){
@@ -154,8 +162,8 @@
             
             for(var i = 0; i < len; i++){
                 el = col[i].nTh;
-                if(col[i].bVisible && col[i].rWidth && parseInt($(el).css("width")) < 30){
-                    col[i].sWidth = col[i].rWidth;
+                if(col[i].bVisible && col[i].rWidth && parseInt($(el).css("width")) <= 30){
+                    col[i].sWidth = col[i].sWidthOrig = col[i].rWidth;
                     domCols = $("th[data-column-index='"+i+"']", $(this.s.dt.nTableWrapper));
                     domCols.width(col[i].rWidth);
                     re = true;
@@ -225,15 +233,15 @@
         
         _fnDelayEvents: function (until, obj, type, namespace) {
             var that = this;
-            var events = $._data($(obj).get(0), 'events');
+            var events = $._data($(obj).get(0), 'events') || [];
             $.each(events, function (i, o) {
                 if (i == type) {
                     $.each(o, function (k, v) {
                         if (v) {
                             if (namespace) {
-                                that.dom.restoreEvents.push({ "until": until, "obj": obj, "type": v.type, "namespace": v.namespace, "handler": v.handler });
                                 if (v.namespace == namespace) {
                                     $(obj).off(type + "." + namespace);
+                                    that.dom.restoreEvents.push({ "until": until, "obj": obj, "type": v.type, "namespace": v.namespace, "handler": v.handler });
                                 }
                             } else {
                                 that.dom.restoreEvents.push({ "until": until, "obj": obj, "type": v.type, "namespace": null, "handler": v.handler });
@@ -256,6 +264,43 @@
                     } else {
                         $(that.dom.restoreEvents[i].obj).off(that.dom.restoreEvents[i].type).on(that.dom.restoreEvents[i].type, that.dom.restoreEvents[i].handler);
                         that.dom.restoreEvents.splice(i, 1);
+                    }
+                }
+            }
+        },
+        
+        _fnDelayTouchEvents : function(until, obj, type, namespace){
+            var that = this;
+            var events = $._data($(obj).get(0), 'events');
+            $.each(events, function (i, o) {
+                if (i == type) {
+                    $.each(o, function (k, v) {
+                        if (v) {
+                            if (namespace) {
+                                if (v.namespace == namespace) {
+                                    $(obj).off(type + "." + namespace);
+                                    that.dom.restoreTouchEvents.push({ "until": until, "obj": obj, "type": v.type, "namespace": v.namespace, "handler": v.handler });
+                                }
+                            } else {
+                                that.dom.restoreTouchEvents.push({ "until": until, "obj": obj, "type": v.type, "namespace": null, "handler": v.handler });
+                                $(obj).off(type);
+                            }
+                        }
+                    });
+                }
+            });
+        },
+        _fnRestoreTouchEvents : function (until) {
+            var that = this;
+            var i;
+            for (i = that.dom.restoreTouchEvents.length; i--;) {
+                if (that.dom.restoreTouchEvents[i].until == undefined || that.dom.restoreTouchEvents[i].until == null || that.dom.restoreTouchEvents[i].until == until) {
+                    if (that.dom.restoreTouchEvents[i].namespace) {
+                        $(that.dom.restoreTouchEvents[i].obj).off(that.dom.restoreTouchEvents[i].type + "." + that.dom.restoreTouchEvents[i].namespace).on(that.dom.restoreTouchEvents[i].type + "." + that.dom.restoreTouchEvents[i].namespace, that.dom.restoreTouchEvents[i].handler);
+                        that.dom.restoreTouchEvents.splice(i, 1);
+                    } else {
+                        $(that.dom.restoreTouchEvents[i].obj).off(that.dom.restoreTouchEvents[i].type).on(that.dom.restoreTouchEvents[i].type, that.dom.restoreTouchEvents[i].handler);
+                        that.dom.restoreTouchEvents.splice(i, 1);
                     }
                 }
             }
@@ -285,7 +330,14 @@
             $(that.s.dt.nTableWrapper).off("mousedown.ColResize touchstart.ColResize").on("mousedown.ColResize touchstart.ColResize", "th", function (e) {
                 var resizeAvailable = that._fnResizeAvailable.call(that, e, this);
                 if(resizeAvailable){
+                    if(e.type == "touchstart"){
+                        that._fnDelayTouchEvents(null, document, "touchmove", "ColReorder");
+                        that._fnDelayTouchEvents(null, document, "touchend", "ColReorder");
+                    }
                     that._fnMouseDown.call(that, e, this);
+                }
+                else if(e.type == "touchstart"){
+                    that._fnRestoreTouchEvents();
                 }
             });
             
@@ -395,7 +447,7 @@
             that.s.isMousedown = false;
 
             that.s.mouse.targetColumn.width = that.dom.resizeCol.width();
-            this.dt.columns.adjust();
+//            this.dt.columns.adjust();
             
             var LeftWrapper = $(that.s.dt.nTableWrapper).find(".DTFC_LeftWrapper");
             var DTFC_LeftWidth = LeftWrapper.width();
